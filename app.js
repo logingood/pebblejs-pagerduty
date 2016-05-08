@@ -7,8 +7,6 @@
  *
  *  Resolving incidents is WIP
  *
- *  Murat Mukhtarov 2016
- *
  */
 
 var UI = require('ui');
@@ -26,6 +24,7 @@ Pebble.addEventListener("ready", function(e) {
 
 Pebble.addEventListener("showConfiguration", function(_event) {
   var url = 'https://murat1985.github.io/pebblejs-pagerduty/';
+  url += "#";
   for(var i = 0, x = localStorage.length; i < x; i++) {
     var key = localStorage.key(i);
     var val = localStorage.getItem(key);
