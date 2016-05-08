@@ -2,7 +2,7 @@
  *  Code was inspired by http://euri.ca/2014/using-pebble-js-to-hit-pagerduty/
  *  Uses https://pebble.github.io/pebblejs/
  *
- *  This application allows to receive pagerduty incidents on your Pebble Watch and 
+ *  This application allows to receive pagerduty incidents on your Pebble Watch and
  *  Acknowledge them or Acknowledge all incidents
  *
  *  Resolving incidents is WIP
@@ -21,30 +21,47 @@ var token;
 var subdomain;
 var email;
 
-Pebble.addEventListener('showConfiguration', function() {
+Pebble.addEventListener("ready", function(e) {
+});
+
+Pebble.addEventListener("showConfiguration", function(_event) {
   var url = 'https://murat1985.github.io/pebblejs-pagerduty/';
+  for(var i = 0, x = localStorage.length; i < x; i++) {
+    var key = localStorage.key(i);
+    var val = localStorage.getItem(key);
+    if(val != null) {
+      url += "&" + encodeURIComponent(key) + "=" + encodeURIComponent(val);
+    }
+  }
+  console.log(url);
   Pebble.openURL(url);
 });
+var key;
 
 Pebble.addEventListener('webviewclosed', function(e) {
   // Decode the user's preferences
   configData = JSON.parse(decodeURIComponent(e.response));
-  user_id = configData.user_id;
-  token = configData.token;
-  email = configData.email;
-  subdomain =  configData.subdomain;
+  for(key in configData) {
+    localStorage.setItem(key, configData[key]);
+  }
 });
 
+console.log("Getting configuration from local storage");
+
+user_id = localStorage.getItem('user_id');
+token = localStorage.getItem('token');
+email = localStorage.getItem('email');
+subdomain =  localStorage.getItem('subdomain');
 
 var str = "";
 
-// 4000ms = 4 seconds: about as high as you can get without rate limiting kicking in
+// 4000ms = 4 seconds
 var polling_interval = 4000;
 
 var wind = new UI.Window();
-var textfield
+var textfield;
 
-var ajax = require('ajax')
+var ajax = require('ajax');
 var count = -1;
 var interval;
 
@@ -111,7 +128,6 @@ AckAll = function (data) {
           }
         },
         function (status) {
-          console.log('Return status' + JSON.stringify(status));
           var page2 = new UI.Card({
             title: status.incident_number,
             body: 'Status: ' + status.status + ' ' + status.created_on
@@ -148,7 +164,7 @@ updateScreen = function (data) {
     var Service = "";
     var State = "";
     var page1 = "";
-   
+
     if(new_count>count && new_count > 0) {
       Vibe.vibrate('short');
       for (i=0; i<new_count; i++) {
@@ -164,7 +180,7 @@ updateScreen = function (data) {
         console.log("Host: " + Host + " Service " + Service + " State " + State);
         page1 = new UI.Card({
           title: Host,
-          body: Service + " " + State 
+          body: Service + " " + State
         });
         page1.show();
         page1.on('click', 'up', function() {
@@ -187,8 +203,7 @@ updateScreen = function (data) {
           contentType: 'application/json; charset=utf-8'
         }
       },
-      function (status) { 
-        console.log(JSON.stringify(status));
+      function (status) {
         // Convert received GMT to local TZ
         var date = new Date(status.users[0].on_call[0].end);
         str = str + "On call till\n" + date.toString() + "\n";
@@ -207,9 +222,9 @@ QueryIncidents()
 interval = window.setInterval(QueryIncidents,polling_interval)
 
 // Load a basic screen
-wind = new UI.Window({ status: 
-                      { color: 'white', 
-                        backgroundColor:'black' 
+wind = new UI.Window({ status:
+                      { color: 'white',
+                        backgroundColor:'black'
                       }
                      });
 // Create textfield
