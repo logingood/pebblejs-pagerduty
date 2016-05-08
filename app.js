@@ -23,16 +23,14 @@ Pebble.addEventListener("ready", function(e) {
 });
 
 Pebble.addEventListener("showConfiguration", function(_event) {
-  var url = 'https://murat1985.github.io/pebblejs-pagerduty/';
-  url += "#";
-  for(var i = 0, x = localStorage.length; i < x; i++) {
+  var url = 'https://murat1985.github.io/pebblejs-pagerduty/#';
+  for(var i = 0, x = 4; i < x; i++) {
     var key = localStorage.key(i);
     var val = localStorage.getItem(key);
     if(val != null) {
       url += "&" + encodeURIComponent(key) + "=" + encodeURIComponent(val);
     }
   }
-  console.log(url);
   Pebble.openURL(url);
 });
 var key;
@@ -51,7 +49,6 @@ user_id = localStorage.getItem('user_id');
 token = localStorage.getItem('token');
 email = localStorage.getItem('email');
 subdomain =  localStorage.getItem('subdomain');
-
 var str = "";
 
 // 4000ms = 4 seconds
@@ -65,8 +62,7 @@ var count = -1;
 var interval;
 
 // Query Incidents
-QueryIncidents = function(e) {
-  console.log("updating");
+QueryIncidents = function(all) {
   ajax(
     {
       url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/?status=triggered,acknowledged&assigned_to_user='+user_id,
@@ -76,7 +72,9 @@ QueryIncidents = function(e) {
         contentType: 'application/json; charset=utf-8'
       }
     },
-    updateScreen,
+    function (status) {
+      updateScreen(status, all);
+    },
     function (error) {
       console.log("Error:");
       console.log(error);
@@ -85,7 +83,6 @@ QueryIncidents = function(e) {
 };
 // Get Pages for acknowledgement
 GetPagesToAck = function(e) {
-  console.log("updating");
   ajax(
     {
       url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/?status=triggered&assigned_to_user='+user_id,
@@ -113,8 +110,6 @@ AckAll = function (data) {
   if ( count > 0 ) {
     for ( var i = 0; i < count; i++) {
       IncId = data.incidents[i].id;
-      console.log("Incident is going to put:" + IncId);
-      console.log("Payload = " + Payload.requester_id);
       ajax(
         {
           url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/'+IncId+'/acknowledge',
@@ -132,9 +127,6 @@ AckAll = function (data) {
             body: 'Status: ' + status.status + ' ' + status.created_on
           });
           page2.show();
-        },
-        function (data) {
-          console.log('Success and Result is: ' + JSON.stringify(data));
         }
       );
     }
@@ -155,16 +147,14 @@ var menu_page = new UI.Menu({
 
 // Screen Update very ugly - should rewrite it - TODO
 //
-updateScreen = function (data) {
+updateScreen = function (data, all) {
   var new_count = data.total || 0;
-  console.log("Found " + new_count + " incidents from " + count);
-  if (new_count != count) {
+  if (all == 1 || new_count != count) {
     var Host = "";
     var Service = "";
     var State = "";
     var page1 = "";
-
-    if(new_count>count && new_count > 0) {
+    if(all == 1 || (new_count>count && new_count > 0)) {
       Vibe.vibrate('short');
       for (i=0; i<new_count; i++) {
         if (data.incidents[i].trigger_summary_data.HOSTNAME) {
@@ -176,7 +166,6 @@ updateScreen = function (data) {
           Service = "Not nagios page";
           State = data.incidents[i].trigger_summary_data.subject
         }
-        console.log("Host: " + Host + " Service " + Service + " State " + State);
         page1 = new UI.Card({
           title: Host,
           body: Service + " " + State
@@ -217,8 +206,8 @@ updateScreen = function (data) {
 }
 
 // Polling API
-QueryIncidents()
-interval = window.setInterval(QueryIncidents,polling_interval)
+QueryIncidents(0);
+interval = window.setInterval(function () { QueryIncidents(0) }, polling_interval);
 
 // Load a basic screen
 wind = new UI.Window({ status:
@@ -242,7 +231,6 @@ wind.add(textfield);
 wind.show();
 // Up-click to show menu to Ack All :)
 wind.on('click', 'up', function() {
-  console.log("Should show menu now");
   var menu = new UI.Menu({
     sections: [{
       title: 'Take page action',
@@ -257,8 +245,10 @@ wind.on('click', 'up', function() {
   menu.on('select', function(e) {
     if ( e.itemIndex == 0 ) {
       GetPagesToAck();
-      console.log('Item number ' + e.itemIndex  + ' was pressed!');
     }
   });
-  console.log("Menu shown");
+});
+
+wind.on('click', 'down', function() {
+  QueryIncidents(1);
 });
