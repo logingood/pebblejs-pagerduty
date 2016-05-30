@@ -51,8 +51,8 @@ email = localStorage.getItem('email');
 subdomain =  localStorage.getItem('subdomain');
 var str = "";
 
-// 4000ms = 4 seconds
-var polling_interval = 4000;
+// 10000ms = 10 seconds
+var polling_interval = 10000;
 
 var wind = new UI.Window();
 var textfield;
@@ -147,68 +147,110 @@ var menu_page = new UI.Menu({
 
 // Screen Update very ugly - should rewrite it - TODO
 //
+triggerCount = function (data) {
+  var t_count = 0;
+  for (i=0; i<data.total; i++) {
+    if (data.incidents[i].status == "triggered") {
+      t_count++;
+    }
+  }
+  return t_count;
+}
+
+// Get how long I would be on-call
+onCalltill = function (str) {
+  ajax(
+    {
+      url: 'https://'+subdomain+'.pagerduty.com/api/v1/users/on_call/?query='+email,
+      type: 'json',
+      headers: {
+        Authorization: 'Token token='+token,
+        contentType: 'application/json; charset=utf-8'
+      }
+    },
+    function (status) {
+      // Convert received GMT to local TZ
+      var date = new Date(status.users[0].on_call[0].end);
+      showOnCalltill(date, str);
+    },
+    function (error) {
+      console.log("Error:");
+      console.log(error);
+    }
+  );
+}
+
+// Show textfield with number of incidents and time to off-call
+showOnCalltill = function (date, str) {
+  textfield.text(str + date);
+}
+
+// Show incident card
+showIncidentPage = function (Host, Service, State, data) {
+  var page = new UI.Card({
+    title: Host,
+    body: Service + " " + State
+  });
+
+  page.show();
+  page.on('click', 'up', function() {
+    menu_page.show();
+    menu_page.on('select', function(e) {
+      // Ack all if we click up
+      AckAll(data);
+    });
+  });
+}
+
+getHostServiceState = function (data) {
+  for (i=0; i<data.total; i++) {
+    if (data.incidents[i].trigger_summary_data.HOSTNAME) {
+      Host = data.incidents[i].trigger_summary_data.HOSTNAME
+      Service = data.incidents[i].trigger_summary_data.SERVICEDESC
+      State = data.incidents[i].trigger_summary_data.SERVICESTATE
+    } else {
+      Host = "Not nagios page";
+      Service = "Not nagios page";
+      State = data.incidents[i].trigger_summary_data.subject
+    }
+    // show page
+    showIncidentPage(Host, Service, State, data);
+    clearInterval(interval);
+    // set 30 seconds
+    interval = window.setInterval(function () { QueryIncidents(0) }, 30000);
+  }
+}
+
+showIncidents = function (data) {
+  // Short vibe
+  Vibe.vibrate('short');
+  // Return Host, Service, State
+  getHostServiceState(data);
+}
+
 updateScreen = function (data, all) {
   var new_count = data.total || 0;
-  if (all == 1 || new_count != count) {
-    var Host = "";
-    var Service = "";
-    var State = "";
-    var page1 = "";
-    if(all == 1 || (new_count>count && new_count > 0)) {
-      Vibe.vibrate('short');
-      for (i=0; i<new_count; i++) {
-        if (data.incidents[i].trigger_summary_data.HOSTNAME) {
-          Host = data.incidents[i].trigger_summary_data.HOSTNAME
-          Service = data.incidents[i].trigger_summary_data.SERVICEDESC
-          State = data.incidents[i].trigger_summary_data.SERVICESTATE
-        } else {
-          Host = "Not nagios page";
-          Service = "Not nagios page";
-          State = data.incidents[i].trigger_summary_data.subject
-        }
-        page1 = new UI.Card({
-          title: Host,
-          body: Service + " " + State
-        });
-        page1.show();
-        page1.on('click', 'up', function() {
-          menu_page.show();
-          menu_page.on('select', function(e) {
-            AckAll(data);
-          });
-        });
-      }
-    }
-    count = new_count
-    str = "You have " + count + " pages" + "\n" +"\n";
-    // Getting how long I am on-call
-    ajax(
-      {
-        url: 'https://'+subdomain+'.pagerduty.com/api/v1/users/on_call/?query='+email,
-        type: 'json',
-        headers: {
-          Authorization: 'Token token='+token,
-          contentType: 'application/json; charset=utf-8'
-        }
-      },
-      function (status) {
-        // Convert received GMT to local TZ
-        var date = new Date(status.users[0].on_call[0].end);
-        str = str + "On call till\n" + date.toString() + "\n";
-      },
-      function (error) {
-        console.log("Error:");
-        console.log(error);
-      }
-    );
+  // triggered incidents count
+  t_count = triggerCount(data)
+
+  if (t_count > 0 || all == 1 ) {
+    showIncidents(data);
+  } else {
+    clearInterval(interval);
+    interval = window.setInterval(function () { QueryIncidents(0) }, polling_interval);
   }
-  textfield.text(str);
+
+  str = "Total " + new_count + " pages" + "\n";
+  if (t_count >= 0) {
+    str = str + "Triggered " + t_count + " pages" + "\n";
+  }
+  str = str + "\n";
+  // getting how long I am on call
+  onCalltill(str);
 }
 
 // Polling API
-QueryIncidents(0);
 interval = window.setInterval(function () { QueryIncidents(0) }, polling_interval);
-
 // Load a basic screen
 wind = new UI.Window({ status:
                       { color: 'white',
@@ -229,6 +271,7 @@ textfield = new UI.Text({
 // Add textfield to window
 wind.add(textfield);
 wind.show();
+
 // Up-click to show menu to Ack All :)
 wind.on('click', 'up', function() {
   var menu = new UI.Menu({
