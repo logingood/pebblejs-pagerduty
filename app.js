@@ -170,7 +170,11 @@ onCalltill = function (str) {
     },
     function (status) {
       // Convert received GMT to local TZ
-      var date = new Date(status.users[0].on_call[0].end);
+      if (status.users[0] != null) {
+        var date = new Date(status.users[0].on_call[0].end);
+      } else {
+        date = "Awesome news: you are off call!";
+      }
       showOnCalltill(date, str);
     },
     function (error) {
