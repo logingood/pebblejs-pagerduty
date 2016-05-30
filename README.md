@@ -14,6 +14,9 @@ The easiest way to use it: create a Pebble application with [Cloudpebble](https:
 - App will show you how long you are going to be on-call and how many open incidents you have
 
 ## Configuration
+
+For a configuration page source code, please refer to [gh-pages branch](https://github.com/murat1985/pebblejs-pagerduty/tree/gh-pages) of this repository.
+
 Before using you should configure Pebble.js Duty application from Pebble phone app:
 - You require your pagerduty user-id - (e.g. PXYZ01)
 - Subdomain (subdoman.pagerduty.com)
