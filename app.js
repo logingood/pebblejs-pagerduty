@@ -54,7 +54,11 @@ var str = "";
 // 10000ms = 10 seconds
 var polling_interval = 10000;
 
+var page = new Object();
+var page_result = new Object();
 var wind = new UI.Window();
+
+
 var textfield;
 
 var ajax = require('ajax');
@@ -102,6 +106,30 @@ GetPagesToAck = function(e) {
   );
 };
 
+// Acknowledge one page
+AckIncident = function (IncId) {
+  ajax(
+    {
+      url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/'+IncId+'/acknowledge',
+      type: 'json',
+      method: 'put',
+      data: { "requester_id": user_id },
+      crossDomain: true,
+      headers: {
+        Authorization: 'Token token='+token
+      }
+    },
+    function (status) {
+      if (page_result[status.incident_number] == null) {
+        page_result[status.incident_number] = new UI.Card();
+      }
+      page_result[status.incident_number].title(status.incident_number);
+      page_result[status.incident_number].body('Status: ' + status.status + ' ' + status.created_on);
+      page_result[status.incident_number].show();
+    }
+  );
+}
+
 // Acknowledge Pages based on JSON input passed
 AckAll = function (data) {
   var IncId = "";
@@ -110,25 +138,7 @@ AckAll = function (data) {
   if ( count > 0 ) {
     for ( var i = 0; i < count; i++) {
       IncId = data.incidents[i].id;
-      ajax(
-        {
-          url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/'+IncId+'/acknowledge',
-          type: 'json',
-          method: 'put',
-          data: { "requester_id": user_id },
-          crossDomain: true,
-          headers: {
-            Authorization: 'Token token='+token
-          }
-        },
-        function (status) {
-          var page2 = new UI.Card({
-            title: status.incident_number,
-            body: 'Status: ' + status.status + ' ' + status.created_on
-          });
-          page2.show();
-        }
-      );
+      AckIncident(IncId);
     }
   }
 };
@@ -169,13 +179,7 @@ onCalltill = function (str) {
       }
     },
     function (status) {
-      // Convert received GMT to local TZ
-      if (status.users[0] != null) {
-        var date = new Date(status.users[0].on_call[0].end);
-      } else {
-        date = "Awesome news: you are off call!";
-      }
-      showOnCalltill(date, str);
+      showOnCalltill(status, str);
     },
     function (error) {
       console.log("Error:");
@@ -185,23 +189,32 @@ onCalltill = function (str) {
 }
 
 // Show textfield with number of incidents and time to off-call
-showOnCalltill = function (date, str) {
+showOnCalltill = function (status, str) {
+  // Convert received GMT to local TZ
+  if (status.users[0] != null) {
+    var date = "You are on-call till\n";
+    date = date + new Date(status.users[0].on_call[0].end);
+  } else {
+    date = "You are off-call";
+  }
   textfield.text(str + date);
 }
 
-// Show incident card
-showIncidentPage = function (Host, Service, State, data) {
-  var page = new UI.Card({
-    title: Host,
-    body: Service + " " + State
-  });
 
-  page.show();
-  page.on('click', 'up', function() {
+// Show incident card
+showIncidentPage = function (Host, Service, State, Id) {
+
+  if (page[Id] == null) {
+    page[Id] = new UI.Card();
+  }
+  page[Id].title(Host);
+  page[Id].body(Service + " " + State);
+  page[Id].show();
+  page[Id].on('click', 'up', function() {
     menu_page.show();
     menu_page.on('select', function(e) {
       // Ack all if we click up
-      AckAll(data);
+      AckIncident(Id);
     });
   });
 }
@@ -217,8 +230,9 @@ getHostServiceState = function (data) {
       Service = "Not nagios page";
       State = data.incidents[i].trigger_summary_data.subject
     }
+    Id = data.incidents[i].id
     // show page
-    showIncidentPage(Host, Service, State, data);
+    showIncidentPage(Host, Service, State, Id);
     clearInterval(interval);
     // set 30 seconds
     interval = window.setInterval(function () { QueryIncidents(0) }, 30000);
@@ -239,6 +253,8 @@ updateScreen = function (data, all) {
 
   if (t_count > 0 || all == 1 ) {
     showIncidents(data);
+    clearInterval(interval);
+    interval = window.setInterval(function () { QueryIncidents(0) }, 30000);
   } else {
     clearInterval(interval);
     interval = window.setInterval(function () { QueryIncidents(0) }, polling_interval);
@@ -280,6 +296,7 @@ wind.show();
 wind.on('click', 'up', function() {
   var menu = new UI.Menu({
     sections: [{
+      status: true,
       title: 'Take page action',
       items: [{
         title: 'Ack All'
