@@ -13,7 +13,6 @@ var UI = require('ui');
 var Vector2 = require('vector2');
 var Vibe = require('ui/vibe');
 
-var configData;
 var user_id;
 var token;
 var subdomain;
@@ -33,10 +32,11 @@ Pebble.addEventListener("showConfiguration", function(_event) {
   }
   Pebble.openURL(url);
 });
-var key;
+var configData;
 
 Pebble.addEventListener('webviewclosed', function(e) {
   // Decode the user's preferences
+  var key;
   configData = JSON.parse(decodeURIComponent(e.response));
   for(key in configData) {
     localStorage.setItem(key, configData[key]);
@@ -56,6 +56,7 @@ var polling_interval = 10000;
 
 var page = new Object();
 var page_result = new Object();
+var menu_page = new Object();
 var wind = new UI.Window();
 
 
@@ -105,9 +106,18 @@ GetPagesToAck = function(e) {
     }
   );
 };
+// Show ack confirmation card
+showStatusCard = function(status) {
+  page_result[status.incident_number] = new UI.Card();
+  page_result[status.incident_number].title(status.incident_number);
+  page_result[status.incident_number].body('Status: ' + status.status + ' ' + status.created_on);
+  page_result[status.incident_number].show();
+}
 
 // Acknowledge one page
 AckIncident = function (IncId) {
+  console.log("Ack incident:");
+  console.log(IncId);
   ajax(
     {
       url: 'https://'+subdomain+'.pagerduty.com/api/v1/incidents/'+IncId+'/acknowledge',
@@ -120,20 +130,14 @@ AckIncident = function (IncId) {
       }
     },
     function (status) {
-      if (page_result[status.incident_number] == null) {
-        page_result[status.incident_number] = new UI.Card();
-      }
-      page_result[status.incident_number].title(status.incident_number);
-      page_result[status.incident_number].body('Status: ' + status.status + ' ' + status.created_on);
-      page_result[status.incident_number].show();
+      showStatusCard(status);
     }
   );
 }
 
-// Acknowledge Pages based on JSON input passed
+// Acknowledge all Pages based on JSON input passed
 AckAll = function (data) {
-  var IncId = "";
-  var Payload = { "requester_id": user_id };
+  var IncId;
   count = data.total || 0;
   if ( count > 0 ) {
     for ( var i = 0; i < count; i++) {
@@ -143,20 +147,8 @@ AckAll = function (data) {
   }
 };
 
-// Draw menu to Ack
-var menu_page = new UI.Menu({
-  sections: [{
-    title: 'What to do with the page ?',
-    items: [{
-      title: 'Ack'
-    }, {
-      title: 'Resolve'
-    }]
-  }]
-});
+// count triggered incidents
 
-// Screen Update very ugly - should rewrite it - TODO
-//
 triggerCount = function (data) {
   var t_count = 0;
   for (i=0; i<data.total; i++) {
@@ -200,22 +192,31 @@ showOnCalltill = function (status, str) {
   textfield.text(str + date);
 }
 
+showIncidentMenu = function (Id) {
+  menu_page[Id] = new UI.Menu({
+    sections: [{
+      title: 'What to do with the page ?',
+      items: [ 
+        { title: 'Ack' }, 
+        { title: 'Resolve' } 
+      ]
+    }]
+  });
+  menu_page[Id].show();
+  menu_page[Id].on('select', function(e) {
+    // Ack all if we click up
+    AckIncident(Id);
+  });
+}
 
 // Show incident card
 showIncidentPage = function (Host, Service, State, Id) {
-
-  if (page[Id] == null) {
-    page[Id] = new UI.Card();
-  }
+  page[Id] = new UI.Card();
   page[Id].title(Host);
   page[Id].body(Service + " " + State);
   page[Id].show();
   page[Id].on('click', 'up', function() {
-    menu_page.show();
-    menu_page.on('select', function(e) {
-      // Ack all if we click up
-      AckIncident(Id);
-    });
+    showIncidentMenu(Id);    
   });
 }
 
@@ -226,8 +227,8 @@ getHostServiceState = function (data) {
       Service = data.incidents[i].trigger_summary_data.SERVICEDESC
       State = data.incidents[i].trigger_summary_data.SERVICESTATE
     } else {
-      Host = "Not nagios page";
-      Service = "Not nagios page";
+      Host = data.incidents[i].service.name;
+      Service = data.incidents[i].service.description;
       State = data.incidents[i].trigger_summary_data.subject
     }
     Id = data.incidents[i].id
@@ -246,11 +247,20 @@ showIncidents = function (data) {
   getHostServiceState(data);
 }
 
+printIncidentsCount = function (new_count, t_count) {
+  var str = "Total " + new_count + " pages" + "\n";
+  if (t_count >= 0) {
+    str = str + "Triggered " + t_count + " pages" + "\n";
+  }
+  str = str + "\n";
+  // getting how long I am on call
+  onCalltill(str);
+}
+
 updateScreen = function (data, all) {
   var new_count = data.total || 0;
   // triggered incidents count
-  t_count = triggerCount(data)
-
+  var t_count = triggerCount(data)
   if (t_count > 0 || all == 1 ) {
     showIncidents(data);
     clearInterval(interval);
@@ -259,14 +269,7 @@ updateScreen = function (data, all) {
     clearInterval(interval);
     interval = window.setInterval(function () { QueryIncidents(0) }, polling_interval);
   }
-
-  str = "Total " + new_count + " pages" + "\n";
-  if (t_count >= 0) {
-    str = str + "Triggered " + t_count + " pages" + "\n";
-  }
-  str = str + "\n";
-  // getting how long I am on call
-  onCalltill(str);
+  printIncidentsCount(new_count, t_count);
 }
 
 // Polling API
